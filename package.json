@@ -1,0 +1,61 @@
+{
+  "name": "rosinterface-sdk",
+  "version": "1.0.0",
+  "description": "Enterprise-grade MikroTik RouterOS SDK. Features a secure hybrid REST/TCP engine, offline queuing, and Swarm Mode for ISP networks.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "McBlockier",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mikrotik",
+    "routeros",
+    "routerboard",
+    "api",
+    "rest-api",
+    "socket",
+    "hybrid-engine",
+    "swarm",
+    "cluster",
+    "management",
+    "isp",
+    "wisp",
+    "pppoe",
+    "hotspot",
+    "typescript",
+    "sdk",
+    "automation",
+    "real-time",
+    "streaming",
+    "idempotency"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "ts-node test_integration.ts",
+    "codegen": "ts-node src/cli/Generate.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "dotenv": "^16.6.1",
+    "fs-extra": "^11.3.3",
+    "ora": "^9.0.0",
+    "ssh2": "^1.17.0",
+    "undici": "^7.18.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.12.7",
+    "@types/ssh2": "^1.15.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
