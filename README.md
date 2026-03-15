@@ -7,20 +7,51 @@
 > Engineered for enterprise SaaS, ISPs, and massive network deployments.
 > RosInterface goes far beyond a traditional API client by introducing a secure Hybrid Engine (REST + Sockets).
 > Reactive Streaming, and a Swarm Mode to manage fleets of routers seamlessly.
-> 
+>
 > Build fault-tolerant, offline-first network applications with zero CPU saturation.
 
 > **El SDK Definitivo en Node.js para la Orquestación de MikroTik RouterOS.**  
 > Diseñado para entornos SaaS empresariales, ISPs y despliegues masivos de red.
 > RosInterface va mucho más allá de un cliente API tradicional introduciendo un Motor Híbrido seguro (REST + Sockets).
 > Streaming Reactivo, y un Swarm Mode para gestionar flotas de routers sin fricción.
-> 
+>
 > Construye aplicaciones de red tolerantes a fallos, offline-first y con cero saturación de CPU.
 
 [![npm version](https://img.shields.io/npm/v/rosinterface-sdk.svg?style=flat-square&color=007acc)](https://www.npmjs.com/package/rosinterface-sdk)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 
 ---
+
+
+<details>
+<summary><b>Installation & Quick Start</b></summary>
+
+## Installation & Setup
+
+### Prerequisites
+Before installing the SDK, make sure your environment meets the following requirements:
+
+- **Node.js:** `>=18.0.0` (Recommended for full REST support)
+- **RouterOS:**
+    - `v6.x` → Socket Mode
+    - `v7.x` → Hybrid REST / Socket Mode
+
+---
+
+### 1. Install via npm
+
+Run the following command in the root of your project:
+
+```bash
+npm install rosinterface-sdk
+```
+
+</details>
+
+
+<details>
+<summary><b>English Documentation</b></summary>
+<br>
 
 
 ## English Documentation
@@ -82,15 +113,15 @@ memory leaks, and connection floods that plague traditional automation scripts.
 
 - **Intelligent Hybrid Engine:**
 
-  - Combines the security of the **REST (HTTPS)** protocol for CRUD commands with the speed of **Sockets (TCP)** for data streaming.
-  - *RouterOS v7:* Uses HTTPS + Sockets (Background).
-  - *RouterOS v6:* Uses pure Sockets (Legacy Mode).
+    - Combines the security of the **REST (HTTPS)** protocol for CRUD commands with the speed of **Sockets (TCP)** for data streaming.
+    - *RouterOS v7:* Uses HTTPS + Sockets (Background).
+    - *RouterOS v6:* Uses pure Sockets (Legacy Mode).
 
 - **Swarm Mode:**
-Manages fleets of **50+ routers** from a single instance.
-  - Supports **Broadcast** (all nodes) and **Multicast** (selected groups).
-  - Fault Tolerance: If one router fails, the rest of the swarm continues operating.
-  - Protocol Agnosticism: Mixes modern and legacy routers in the same control group.
+  Manages fleets of **50+ routers** from a single instance.
+    - Supports **Broadcast** (all nodes) and **Multicast** (selected groups).
+    - Fault Tolerance: If one router fails, the rest of the swarm continues operating.
+    - Protocol Agnosticism: Mixes modern and legacy routers in the same control group.
 
   
 ---
@@ -156,15 +187,15 @@ If you enter 8728: You activate Hybrid Mode. The library will use REST to send c
 
 
 >⚠️ **Performance Warning**
-> 
+>
 > The `onSnapshot` function allows you to receive **real-time** router changes in RosInterface.
 > To avoid negative performance impacts on low-spec devices, it is recommended to use it with **Resilience** enabled.
-> 
+>
 > Use it **in moderation; excessive use of onSnapshot can negatively affect the performance of your devices**.
 
 
 > ⚠️ **Basic Configurations on Your Equipment**
-> 
+>
 > Before running these codes, ensure your RouterOS configuration matches:
 > > **Ports (Hybrid Mode):**
 >>
@@ -415,7 +446,7 @@ client.command('/log').print().then(result => {
 > Create a .env file with MIKROTIK_HOST, MIKROTIK_USER, MIKROTIK_PASS
 > Run the command:
 > > npm run codegen -- -p /ppp/secret -n ISecret
-> 
+>
 > OPTION B: Manual Configuration (Quick Testing / CI)
 > Pass connection details directly via flags. Use double quotes for passwords with special chars.
 > >npm run codegen -- -p /ppp/secret -n ISecret --host ROUTER_IP --user admin --pass "secret123" --port 8728
@@ -579,6 +610,12 @@ async function manageWispNetwork() {
 
 ---
 
+</details>
+
+<details>
+<summary><b>Documentación en Español</b></summary>
+<br>
+
 ## Documentación en Español
 
 **RosInterface** no es solo otro wrapper de API; es un SDK de infraestructura de grado empresarial diseñado específicamente para ISPs, plataformas SaaS y topologías de red de misión crítica.
@@ -586,7 +623,7 @@ En su núcleo se encuentra un revolucionario **Motor Híbrido** que cierra intel
 Al unificar sin problemas la fiabilidad transaccional de REST (HTTPS) con la latencia ultrabaja de los Sockets persistentes (TCP),
 ofrece una orquestación en tiempo real sin precedentes en entornos mixtos de RouterOS (v6 y v7) con cero fragmentación de código.
 
-Diseñado con una estricta **filosofía de protección centrada en el hardware**, RosInterface defiende activamente tus dispositivos de borde. 
+Diseñado con una estricta **filosofía de protección centrada en el hardware**, RosInterface defiende activamente tus dispositivos de borde.
 A través de limitadores de tasa inteligentes, circuit breakers y un sistema de colas offline-first, garantiza un rendimiento determinista incluso bajo una degradación severa de la red,
 eliminando por completo los picos de CPU, las fugas de memoria y las inundaciones de conexiones que plagan los scripts de automatización tradicionales.
 
@@ -1134,6 +1171,7 @@ async function manageWispNetwork() {
 
 ---
 
+</details>
 
 ## Author's Note & Contributions / Nota del Autor y Contribuciones
 
