@@ -5,7 +5,12 @@
  * Maps standard HTTP codes to specific MikroTik behaviors and meanings.
  */
 
-export enum RosHttpStatus {
+// OPTIMIZATION: Converted to `const enum`.
+// Standard enums create a physical, bidirectional JavaScript object at runtime.
+// A `const enum` is completely erased during compilation; TypeScript simply inlines
+// the integer values (e.g., replaces `RosHttpStatus.OK` directly with `200` in the final JS).
+// This results in 0 bytes of memory footprint for the enum itself.
+export const enum RosHttpStatus {
     // --- Success ---
     OK = 200,
     CREATED = 201,
@@ -35,6 +40,7 @@ export enum RosHttpStatus {
 
 /**
  * Human-readable, RouterOS-contextual descriptions.
+ * This remains a standard dictionary as we need runtime string lookups.
  */
 export const RosHttpMessages: Record<number, string> = {
     400: "Bad Request: Parameter validation failed, syntax error, or item already exists.",
@@ -56,12 +62,20 @@ export const RosHttpMessages: Record<number, string> = {
  * Useful for Circuit Breakers and Retry Policies.
  */
 export function isRetryableCode(status: number): boolean {
-    return [
-        RosHttpStatus.TOO_MANY_REQUESTS,   // 429
-        RosHttpStatus.INTERNAL_SERVER_ERROR, // 500 (Sometimes scripts fail randomly)
-        RosHttpStatus.BAD_GATEWAY,         // 502
-        RosHttpStatus.SERVICE_UNAVAILABLE, // 503
-        RosHttpStatus.GATEWAY_TIMEOUT,     // 504
-        RosHttpStatus.LOCKED               // 423
-    ].includes(status);
+    // OPTIMIZATION: Replaced `[...].includes(status)` with a `switch` statement.
+    // 1. `[...].includes()` is O(N) and allocates a new Array in memory on EVERY call.
+    // 2. A `switch` statement evaluating literal integers is optimized by the V8 engine
+    //    into a "Jump Table" at the machine code level.
+    // 3. This executes in strictly O(1) time and requires exactly ZERO memory allocation.
+    switch (status) {
+        case RosHttpStatus.TOO_MANY_REQUESTS:     // 429
+        case RosHttpStatus.INTERNAL_SERVER_ERROR: // 500
+        case RosHttpStatus.BAD_GATEWAY:           // 502
+        case RosHttpStatus.SERVICE_UNAVAILABLE:   // 503
+        case RosHttpStatus.GATEWAY_TIMEOUT:       // 504
+        case RosHttpStatus.LOCKED:                // 423
+            return true;
+        default:
+            return false;
+    }
 }

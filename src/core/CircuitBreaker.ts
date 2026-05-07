@@ -1,15 +1,27 @@
 /**
  * CircuitBreakerState Enum
  * Defines the possible states of the protection mechanism.
+ *
+ * OPTIMIZATION: Using `const enum` instead of `enum`.
+ * TypeScript will inline these values (0, 1, 2) at compile time instead of
+ * creating a reverse-mapping object at runtime. This saves memory and
+ * avoids object lookups.
  */
-export enum CircuitBreakerState {
+export const enum CircuitBreakerState {
     /** Normal operation. Requests pass through. */
-    CLOSED,
+    CLOSED = 0,
     /** Failure threshold reached. Requests are blocked immediately. */
-    OPEN,
+    OPEN = 1,
     /** Cool-down period over. A test request is allowed to check health. */
-    HALF_OPEN
+    HALF_OPEN = 2
 }
+
+/**
+ * OPTIMIZATION: Pre-allocated array for O(1) state name resolution.
+ * Since we used `const enum`, we lose TypeScript's reverse mapping.
+ * An array index lookup is significantly faster than an object property lookup.
+ */
+const STATE_NAMES = ['CLOSED', 'OPEN', 'HALF_OPEN'];
 
 export interface CircuitBreakerOptions {
     /** Number of failures allowed before opening the circuit (Default: 5) */
@@ -34,8 +46,8 @@ export class CircuitBreaker {
     private readonly resetTimeout: number;
 
     constructor(options: CircuitBreakerOptions = {}) {
-        this.failureThreshold = options.failureThreshold || 5;
-        this.resetTimeout = options.resetTimeout || 10000;
+        this.failureThreshold = options.failureThreshold ?? 5;
+        this.resetTimeout = options.resetTimeout ?? 10000;
     }
 
     /**
@@ -45,10 +57,17 @@ export class CircuitBreaker {
     public async execute<T>(action: () => Promise<T>): Promise<T> {
         // 1. Check State
         if (this.state === CircuitBreakerState.OPEN) {
-            if (this.isResetTimeoutExpired()) {
+            // OPTIMIZATION: Call Date.now() only once and store it in a constant.
+            // System clock calls are slightly expensive, doing it once saves CPU cycles.
+            const now = Date.now();
+            const timeSinceLastFailure = now - this.lastFailureTime;
+
+            if (timeSinceLastFailure > this.resetTimeout) {
                 this.transitionTo(CircuitBreakerState.HALF_OPEN);
             } else {
-                const timeLeft = this.resetTimeout - (Date.now() - this.lastFailureTime);
+                const timeLeft = this.resetTimeout - timeSinceLastFailure;
+                // Note: Throwing creates an Error object (garbage collection overhead),
+                // but this is the failure path, so stability is prioritized over GC here.
                 throw new Error(`CircuitBreaker is OPEN. Fast-failing. Retry in ${timeLeft}ms.`);
             }
         }
@@ -66,7 +85,9 @@ export class CircuitBreaker {
      * Handles successful execution. Resets failure counts.
      */
     private onSuccess<T>(result: T): T {
-        if (this.state === CircuitBreakerState.HALF_OPEN) {
+        // OPTIMIZATION: Strict equality check is faster. Only transition if
+        // we are NOT already CLOSED, avoiding unnecessary function calls.
+        if (this.state !== CircuitBreakerState.CLOSED) {
             this.transitionTo(CircuitBreakerState.CLOSED);
         }
         this.failureCount = 0;
@@ -89,12 +110,7 @@ export class CircuitBreaker {
 
     private transitionTo(newState: CircuitBreakerState): void {
         this.state = newState;
-        const stateName = CircuitBreakerState[newState];
-        console.warn(`[CircuitBreaker] State changed to: ${stateName}`);
-    }
-
-    private isResetTimeoutExpired(): boolean {
-        return (Date.now() - this.lastFailureTime) > this.resetTimeout;
+        console.warn(`[CircuitBreaker] State changed to: ${STATE_NAMES[newState]}`);
     }
 
     public getState(): CircuitBreakerState {

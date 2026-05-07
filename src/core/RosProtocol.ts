@@ -16,54 +16,56 @@ export class RosProtocol {
      * * @param str The command or parameter (e.g., "/ip/address/print" or "=disabled=yes")
      */
     public static encodeSentence(str: string): Buffer {
-        // Convert String to Bytes (Native UTF-8)
-        // Note: The legacy library used 'win1252' via iconv-lite.
-        // In 2025/26 and RouterOS v7, UTF-8 is preferable and requires no external dependencies.
-        const encoded = Buffer.from(str, 'utf8');
+        // OPTIMIZATION: Calculate byte length without allocating a new Buffer first.
+        // Buffer.byteLength is highly optimized in V8 (O(n) but strictly at the C++ level).
+        const len = Buffer.byteLength(str, 'utf8');
+        let headerLen = 0;
 
-        const len = encoded.length;
+        // 1. Determine header size early (O(1))
+        if (len < 0x80) headerLen = 1;
+        else if (len < 0x4000) headerLen = 2;
+        else if (len < 0x200000) headerLen = 3;
+        else if (len < 0x10000000) headerLen = 4;
+        else headerLen = 5;
+
+        // OPTIMIZATION: Use `Buffer.allocUnsafe` instead of `alloc` + `concat`.
+        // `allocUnsafe` skips the zero-filling phase (much faster CPU execution).
+        // Since we immediately overwrite every single byte in this buffer, it is perfectly safe.
+        // This reduces 3 buffer allocations down to EXACTLY 1.
+        const result = Buffer.allocUnsafe(headerLen + len);
         let offset = 0;
-        let header: Buffer;
 
-        // Calculate how many bytes are needed to specify the length.
-        // This logic is adopted directly from Transmitter.ts logic.
-        if (len < 0x80) {
-            // 1 byte for length
-            header = Buffer.alloc(1);
-            header[offset++] = len;
-        } else if (len < 0x4000) {
-            // 2 bytes
-            header = Buffer.alloc(2);
+        // 2. Write the header directly into the final buffer
+        if (headerLen === 1) {
+            result[offset++] = len;
+        } else if (headerLen === 2) {
             const lenBytes = len | 0x8000;
-            header[offset++] = (lenBytes >> 8) & 0xff;
-            header[offset++] = lenBytes & 0xff;
-        } else if (len < 0x200000) {
-            // 3 bytes
-            header = Buffer.alloc(3);
+            result[offset++] = (lenBytes >> 8) & 0xff;
+            result[offset++] = lenBytes & 0xff;
+        } else if (headerLen === 3) {
             const lenBytes = len | 0xc00000;
-            header[offset++] = (lenBytes >> 16) & 0xff;
-            header[offset++] = (lenBytes >> 8) & 0xff;
-            header[offset++] = lenBytes & 0xff;
-        } else if (len < 0x10000000) {
-            // 4 bytes
-            header = Buffer.alloc(4);
+            result[offset++] = (lenBytes >> 16) & 0xff;
+            result[offset++] = (lenBytes >> 8) & 0xff;
+            result[offset++] = lenBytes & 0xff;
+        } else if (headerLen === 4) {
             const lenBytes = len | 0xe0000000;
-            header[offset++] = (lenBytes >> 24) & 0xff;
-            header[offset++] = (lenBytes >> 16) & 0xff;
-            header[offset++] = (lenBytes >> 8) & 0xff;
-            header[offset++] = lenBytes & 0xff;
+            result[offset++] = (lenBytes >>> 24) & 0xff;
+            result[offset++] = (lenBytes >> 16) & 0xff;
+            result[offset++] = (lenBytes >> 8) & 0xff;
+            result[offset++] = lenBytes & 0xff;
         } else {
-            // 5 bytes (Extreme cases for giant payloads)
-            header = Buffer.alloc(5);
-            header[offset++] = 0xf0;
-            header[offset++] = (len >> 24) & 0xff;
-            header[offset++] = (len >> 16) & 0xff;
-            header[offset++] = (len >> 8) & 0xff;
-            header[offset++] = len & 0xff;
+            result[offset++] = 0xf0;
+            result[offset++] = (len >>> 24) & 0xff;
+            result[offset++] = (len >> 16) & 0xff;
+            result[offset++] = (len >> 8) & 0xff;
+            result[offset++] = len & 0xff;
         }
 
-        // 3. Concatenate the header (length) with the body (command)
-        return Buffer.concat([header, encoded]);
+        // 3. Write the string payload directly into the remaining space of the buffer
+        // `write` encodes directly into the pre-allocated memory space.
+        result.write(str, offset, len, 'utf8');
+
+        return result;
     }
 
     /**
@@ -74,7 +76,9 @@ export class RosProtocol {
      * or NULL if there is not enough data yet.
      */
     public static decodeLength(buffer: Buffer): { length: number; byteLength: number } | null {
-        if (buffer.length === 0) return null;
+        // OPTIMIZATION: Cache length to avoid calling the property getter repeatedly
+        const bufLen = buffer.length;
+        if (bufLen === 0) return null;
 
         const b = buffer[0];
 
@@ -87,29 +91,31 @@ export class RosProtocol {
 
         // Case 2 bytes (10xxxxxx ...)
         if ((b & 0xC0) === 0x80) {
-            if (buffer.length < 2) return null; // Missing data
+            if (bufLen < 2) return null;
             const len = ((b & 0x3F) << 8) | buffer[1];
             return { length: len, byteLength: 2 };
         }
 
         // Case 3 bytes (110xxxxx ...)
         if ((b & 0xE0) === 0xC0) {
-            if (buffer.length < 3) return null;
+            if (bufLen < 3) return null;
             const len = ((b & 0x1F) << 16) | (buffer[1] << 8) | buffer[2];
             return { length: len, byteLength: 3 };
         }
 
         // Case 4 bytes (1110xxxx ...)
         if ((b & 0xF0) === 0xE0) {
-            if (buffer.length < 4) return null;
-            const len = ((b & 0x0F) << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
+            if (bufLen < 4) return null;
+            // BUG FIX & OPTIMIZATION: `>>> 0` forces JS to treat the result as a 32-bit UNSIGNED integer.
+            // Without this, large chunks from the router might be interpreted as negative lengths.
+            const len = (((b & 0x0F) << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]) >>> 0;
             return { length: len, byteLength: 4 };
         }
 
         // Case 5 bytes (11110000 ...)
         if (b === 0xF0) {
-            if (buffer.length < 5) return null;
-            const len = (buffer[1] << 24) | (buffer[2] << 16) | (buffer[3] << 8) | buffer[4];
+            if (bufLen < 5) return null;
+            const len = ((buffer[1] << 24) | (buffer[2] << 16) | (buffer[3] << 8) | buffer[4]) >>> 0;
             return { length: len, byteLength: 5 };
         }
 

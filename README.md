@@ -1,5 +1,5 @@
 
-# RosInterface SDK `v1.0`
+# RosInterface `v2.0`
 ### **The Modern Infrastructure Standard for MikroTik**
 
 
@@ -43,7 +43,7 @@ Before installing the SDK, make sure your environment meets the following requir
 Run the following command in the root of your project:
 
 ```bash
-npm install rosinterface-sdk
+npm install rosinterface
 ```
 
 </details>
@@ -122,6 +122,11 @@ memory leaks, and connection floods that plague traditional automation scripts.
     - Supports **Broadcast** (all nodes) and **Multicast** (selected groups).
     - Fault Tolerance: If one router fails, the rest of the swarm continues operating.
     - Protocol Agnosticism: Mixes modern and legacy routers in the same control group.
+
+- **O(1) Plugin Engine:** A highly extensible architecture. Inject community plugins or build your own Deep Packet Inspection tools without sacrificing a single millisecond of performance.
+- **Built-in Fault Tolerance:** Native Circuit Breakers and Token-Bucket Rate Limiters protect both your Node.js server and the RouterOS CPU from cascading failures.
+-  **Lazy-Loaded Subsystems:** Modules (Firewall, Queue, PPP) are strictly lazy-loaded. Memory is only allocated for the specific tools you actually invoke.
+- **The RosToolkit:** A built-in standard library providing zero-dependency, C++ level performance tools for Math, Forensics, and Packet Parsing.
 
   
 ---
@@ -682,6 +687,14 @@ eliminando por completo los picos de CPU, las fugas de memoria y las inundacione
     - Soporte para **Broadcast** (todos los nodos) y **Multicast** (grupos selectos).
     - Tolerancia a fallos: Si un router no responde, el resto del enjambre sigue operando.
     - Agnosticismo de Protocolo: Mezcla routers modernos y antiguos en el mismo grupo de control.
+    - 
+- **Motor de plugins O(1):** Una arquitectura altamente extensible. Inyecte plugins de la comunidad o cree sus propias herramientas de inspección profunda de paquetes sin sacrificar ni un solo milisegundo de rendimiento.
+
+- **Tolerancia a fallos integrada:** Los disyuntores nativos y los limitadores de velocidad de tipo Token-Bucket protegen tanto su servidor Node.js como la CPU de RouterOS de fallos en cascada.
+
+- **Subsistemas de carga diferida:** Los módulos (Firewall, Queue, PPP) se cargan estrictamente de forma diferida. La memoria solo se asigna para las herramientas específicas que usted invoque.
+
+- **RosToolkit:** Una biblioteca estándar integrada que proporciona herramientas de rendimiento sin dependencias, escritas en C++, para matemáticas, análisis forense y análisis de paquetes.
 
 
 ---
@@ -1172,6 +1185,467 @@ async function manageWispNetwork() {
 ---
 
 </details>
+
+<details>
+<summary><b>Creating Custom Plugins</b></summary>
+<br>
+
+RosInterface includes a fully modular Plugin Engine that allows developers to extend the SDK with custom automation systems, packet analyzers, telemetry collectors, middleware interceptors, and advanced RouterOS integrations.
+
+Every plugin must implement the `RosPlugin` interface.
+
+---
+
+## Basic Plugin Structure
+
+```ts
+import { RosPlugin, RosPluginContext } from "rosinterface";
+
+export class SmartLoggerPlugin implements RosPlugin {
+    public readonly name = "rosinterface-smart-logger";
+    public readonly version = "1.0.0";
+
+    private client!: any;
+    private toolkit!: RosPluginContext["toolkit"];
+
+    install(context: RosPluginContext): void {
+        this.client = context.client;
+        this.toolkit = context.toolkit;
+
+        console.log("[Plugin] Smart Logger Initialized");
+    }
+
+    onConnect(): void {
+        console.log("[Plugin] Router Connected");
+    }
+
+    onDisconnect(): void {
+        console.log("[Plugin] Router Disconnected");
+    }
+
+    beforeCommand(command: string): string {
+        console.log("[Command]", command);
+        return command;
+    }
+}
+```
+
+## Installing a Plugin
+
+```ts
+import { MikrotikClient } from "rosinterface";
+import { SmartLoggerPlugin } from "./plugins/SmartLoggerPlugin";
+
+const client = new MikrotikClient({
+    host: process.env.MIKROTIK_HOST,
+    user: process.env.MIKROTIK_USER,
+    password: process.env.MIKROTIK_PASSWORD,
+    protocol: process.env.MIKROTIK_PROTOCOL,
+    port: 443,
+    socketPort: 8729, 
+    useTLS: true, 
+    allowInsecureConfig: true,
+    rejectUnauthorized: false,
+});
+
+client.use(new SmartLoggerPlugin());
+
+```
+> During installation, RosInterface injects a secure high-performance context into your plugin.
+
+```ts
+
+install(context: RosPluginContext): void {
+    context.client;    // Main MikrotikClient instance
+    context.protocol;  // Low-level RosProtocol engine
+    context.toolkit;   // RosToolkit utilities
+}
+
+```
+
+## Lifecycle Hooks
+
+> RosInterface plugins support high-level lifecycle hooks for business logic automation.
+
+| Hook | Description |
+|------|-------------|
+| `onConnect()` | Executed after successful authentication |
+| `onDisconnect()` | Triggered when socket closes |
+| `beforeCommand(command)` | Intercepts commands before encoding |
+
+## Low-Level Socket Interceptors
+> Plugins can intercept raw network buffers before and after encoding.
+
+# Incoming Packet Interceptor
+```ts
+onRawBufferReceived(chunk: Buffer): Buffer {
+    console.log(chunk);
+    return chunk;
+}
+
+```
+
+# Outgoing Packet Interceptor
+```ts
+onRawBufferSend(payload: Buffer): Buffer {
+    console.log(payload);
+    return payload;
+}
+
+```
+
+## Using RosToolkit
+```ts
+
+const dump = this.toolkit.Bytes.toHexDump(buffer);
+console.log(dump);
+```
+> Example output: `ff a1 00 2b 9c 01 ...`
+
+## Best Practices
+
+- Always return buffers in low-level interceptors
+- Avoid blocking the event loop
+- Keep plugins stateless whenever possible
+- Use `Float64Array` for telemetry calculations
+- Clean intervals and streams in `onDisconnect()`
+- Use semantic versioning for compatibility tracking
+
+---
+
+## Recommended Plugin Ideas
+
+- Smart Cache Engine
+- Real-Time Traffic Analyzer
+- Intrusion Detection System (IDS)
+- RouterOS Telemetry Dashboard
+- AI-Based Anomaly Detection
+- Auto Failover Manager
+- Network Digital Twin
+- Packet Recorder
+- QoS Optimizer
+- PPPoE Monitoring Engine
+
+</details>
+
+
+
+<details>
+<summary><b>Creación de Plugins Personalizados</b></summary>
+<br>
+
+RosInterface incluye un motor de plugins totalmente modular que permite a los desarrolladores extender el SDK con sistemas de automatización personalizados, analizadores de paquetes, recolectores de telemetría, interceptores middleware e integraciones avanzadas con RouterOS.
+
+Cada plugin debe implementar la interfaz `RosPlugin`.
+
+---
+
+## Estructura Básica de un Plugin
+
+```ts
+import { RosPlugin, RosPluginContext } from "rosinterface";
+
+export class SmartLoggerPlugin implements RosPlugin {
+    public readonly name = "rosinterface-smart-logger";
+    public readonly version = "1.0.0";
+
+    private client!: any;
+    private toolkit!: RosPluginContext["toolkit"];
+
+    install(context: RosPluginContext): void {
+        this.client = context.client;
+        this.toolkit = context.toolkit;
+
+        console.log("[Plugin] Smart Logger Initialized");
+    }
+
+    onConnect(): void {
+        console.log("[Plugin] Router Connected");
+    }
+
+    onDisconnect(): void {
+        console.log("[Plugin] Router Disconnected");
+    }
+
+    beforeCommand(command: string): string {
+        console.log("[Command]", command);
+        return command;
+    }
+}
+```
+
+---
+
+## Instalación de un Plugin
+
+```ts
+import { MikrotikClient } from "rosinterface";
+import { SmartLoggerPlugin } from "./plugins/SmartLoggerPlugin";
+
+const client = new MikrotikClient({
+    host: process.env.MIKROTIK_HOST,
+    user: process.env.MIKROTIK_USER,
+    password: process.env.MIKROTIK_PASSWORD,
+    protocol: process.env.MIKROTIK_PROTOCOL,
+    port: 443,
+    socketPort: 8729,
+    useTLS: true,
+    allowInsecureConfig: true,
+    rejectUnauthorized: false,
+});
+
+client.use(new SmartLoggerPlugin());
+```
+
+---
+
+## Contexto del Plugin
+
+Durante la instalación, RosInterface inyecta un contexto seguro y de alto rendimiento en cada plugin.
+
+```ts
+install(context: RosPluginContext): void {
+    context.client;    // Instancia principal de MikrotikClient
+    context.protocol;  // Motor RosProtocol de bajo nivel
+    context.toolkit;   // Utilidades RosToolkit
+}
+```
+
+---
+
+## Hooks del Ciclo de Vida
+
+Los plugins de RosInterface soportan hooks de alto nivel para automatización y lógica de negocio.
+
+| Hook | Descripción |
+|------|-------------|
+| `onConnect()` | Se ejecuta después de una autenticación exitosa |
+| `onDisconnect()` | Se activa cuando el socket se cierra |
+| `beforeCommand(command)` | Intercepta comandos antes de ser codificados |
+
+---
+
+## Interceptores de Socket de Bajo Nivel
+
+Los plugins pueden interceptar buffers de red sin procesar antes y después de la codificación.
+
+### Interceptor de Paquetes Entrantes
+
+```ts
+onRawBufferReceived(chunk: Buffer): Buffer {
+    console.log(chunk);
+    return chunk;
+}
+```
+
+### Interceptor de Paquetes Salientes
+
+```ts
+onRawBufferSend(payload: Buffer): Buffer {
+    console.log(payload);
+    return payload;
+}
+```
+
+---
+
+## Uso de RosToolkit
+
+### Hex Dump Utility
+
+```ts
+const dump = this.toolkit.Bytes.toHexDump(buffer);
+
+console.log(dump);
+```
+
+Ejemplo de salida:
+
+```txt
+ff a1 00 2b 9c 01 ...
+```
+
+---
+
+## Mejores Prácticas
+
+- Siempre devuelve buffers en interceptores de bajo nivel
+- Evita bloquear el Event Loop
+- Mantén los plugins sin estado siempre que sea posible
+- Usa `Float64Array` para cálculos de telemetría
+- Limpia intervalos y streams en `onDisconnect()`
+- Utiliza versionado semántico para compatibilidad
+
+---
+
+## Ideas de Plugins Recomendados
+
+- Motor de caché inteligente
+- Analizador de Tráfico en Tiempo Real
+- Sistema de Detección de Intrusiones (IDS)
+- Dashboard de Telemetría RouterOS
+- Detección de Anomalías con IA
+- Gestor Automático de Failover
+- Digital Twin de Red
+- Grabador de Paquetes
+- Optimizador QoS
+- Motor de Monitoreo PPPoE
+
+</details>
+
+
+
+
+
+<details>
+<summary><b>Creating Custom Wrappers</b></summary>
+<br>
+
+## Extending the SDK with Custom Wrappers
+>The rosinterface-sdk provides many high-level wrappers for common RouterOS operations.
+> However, RouterOS contains hundreds of commands and it is impossible for the SDK to abstract every possible feature.
+>
+> For this reason, the SDK exposes the **write()** method.
+>
+> This method is the low-level core execution layer that allows developers to send raw commands directly to the **RouterOS API**.
+>
+> This enables you to:
+- Build your own custom abstractions 
+- Create feature-specific wrappers
+- Implement advanced RouterOS functionality
+- Share community wrapper packages
+> If you develop useful wrappers, you are encouraged to share them with the community as small wrapper packages built on top of **write()**.
+>
+
+```typescript
+class PPPoEWrapper {
+
+    constructor(private client: MikrotikClient) {}
+
+    /**
+     * Create a PPPoE Secret
+     */
+    async createSecret(
+        name: string,
+        password: string,
+        profile: string,
+        service: string = "pppoe"
+    ) {
+
+        return this.client.write("/ppp/secret/add", {
+            name,
+            password,
+            profile,
+            service
+        });
+
+    }
+
+}
+
+```
+
+## Usage
+
+```typescript
+const pppoe = new PPPoEWrapper(client);
+
+await pppoe.createSecret(
+    "customer01",
+    "securePassword",
+    "basic-profile"
+);
+```
+## What Happens Internally?
+When write() is executed, the SDK automatically handles:
+
+- Circuit Breaker protection
+- Rate Limiting
+- Protocol selection (REST for RouterOS v7 / Socket for v6)
+- Automatic response normalization
+
+This means your wrapper benefits from the full reliability architecture of the SDK without needing to implement it yourself.
+
+</details>
+
+
+
+
+
+<details>
+<summary><b>Creación de envoltorios personalizados</b></summary>
+<br>
+
+## Ampliación del SDK con envoltorios personalizados
+>El SDK de rosinterface proporciona numerosos envoltorios de alto nivel para operaciones comunes de RouterOS.
+>Sin embargo, RouterOS contiene cientos de comandos y es imposible que el SDK abstraiga todas las funcionalidades posibles.
+>Por este motivo, el SDK expone el método **write()**.
+>Este método es la capa de ejecución principal de bajo nivel que permite a los desarrolladores enviar comandos directamente a la **API de RouterOS**.
+
+>Esto permite:
+- Crear abstracciones personalizadas
+- Crear envoltorios específicos para funcionalidades
+- Implementar funcionalidades avanzadas de RouterOS
+- Compartir paquetes de envoltorios de la comunidad
+>Si desarrolla envoltorios útiles, le animamos a compartirlos con la comunidad como pequeños paquetes de envoltorios basados ​​en **write()**.
+> 
+
+```typescript
+class PPPoEWrapper {
+
+    constructor(private client: MikrotikClient) {}
+
+    /**
+     * Create a PPPoE Secret
+     */
+    async createSecret(
+        name: string,
+        password: string,
+        profile: string,
+        service: string = "pppoe"
+    ) {
+
+        return this.client.write("/ppp/secret/add", {
+            name,
+            password,
+            profile,
+            service
+        });
+
+    }
+
+}
+
+```
+
+## Su uso
+
+```typescript
+const pppoe = new PPPoEWrapper(client);
+
+await pppoe.createSecret(
+    "customer01",
+    "securePassword",
+    "basic-profile"
+);
+```
+## ¿Qué sucede internamente?
+
+Cuando se ejecuta `write()`, el SDK gestiona automáticamente:
+
+- Protección mediante disyuntor
+- Limitación de velocidad
+- Selección de protocolo (REST para RouterOS v7 / Socket para v6)
+- Normalización automática de la respuesta
+
+Esto significa que su envoltorio se beneficia de la arquitectura de confiabilidad completa del SDK sin necesidad de implementarla usted mismo.
+</details>
+
+
+
+
+
+
 
 ## Author's Note & Contributions / Nota del Autor y Contribuciones
 

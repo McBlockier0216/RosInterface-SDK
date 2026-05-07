@@ -20,6 +20,8 @@ import {FirewallWrapper} from "../features/FirewallWrapper";
 import {IpWrapper} from "../features/IpWrapper";
 import {QueueWrapper} from "../features/QueueWrapper";
 import {PPPWrapper} from "../features/PPPoEWrapper";
+import {RosPlugin} from "./RosPlugin";
+import {RosToolkit} from "../core/RosToolkit";
 
 // Load environment variables immediately
 dotenv.config();
@@ -112,24 +114,6 @@ export class MikrotikClient extends EventEmitter {
     private readonly isConfigFromEnv: boolean = false;
     private readonly rest: RestProtocol | null = null;
 
-    /** Manages PPPoE users, active sessions, and profiles. */
-    public ppp: PPPWrapper;
-
-    /** Manages Simple Queues for bandwidth control and QoS. */
-    public queue: QueueWrapper;
-
-    /** Manages DHCP Leases, Static IP assignments, and Layer 2 ARP bindings. */
-    public ip: IpWrapper;
-
-    /** Manages Address Lists, NAT rules (Port Forwarding), and Filter rules. */
-    public firewall: FirewallWrapper;
-
-    /** Manages device reboots, backups, and global external IP discovery. */
-    public system: SystemWrapper;
-
-    /** Runs security audits and aggregates system health/resource data. */
-    public diagnostic: DiagnosticWrapper;
-
     private _isConnected: boolean = false;
     private isManuallyClosing: boolean = false;
 
@@ -139,7 +123,41 @@ export class MikrotikClient extends EventEmitter {
 
     private activeLiveCollections = new Map<string, LiveCollection<any>>();
 
+    // --- OPTIMIZATION: PLUGIN ENGINE ---
+    /**
+     * O(1) Plugin Registry.
+     * Stores initialized community or official plugins.
+     */
+    private readonly plugins: Map<string, RosPlugin> = new Map();
+
+    // --- OPTIMIZATION: LAZY-LOADED WRAPPERS (Private References) ---
+    // Memory is only allocated if the user actually calls client.ppp, client.ip, etc.
+    private _ppp?: PPPWrapper;
+    private _queue?: QueueWrapper;
+    private _ip?: IpWrapper;
+    private _firewall?: FirewallWrapper;
+    private _system?: SystemWrapper;
+    private _diagnostic?: DiagnosticWrapper;
+
     // --- PUBLIC MODULES (Facade) ---
+
+    /** Manages PPPoE users, active sessions, and profiles. */
+    public get ppp(): PPPWrapper { return this._ppp ??= new PPPWrapper(this); }
+
+    /** Manages Simple Queues for bandwidth control and QoS. */
+    public get queue(): QueueWrapper { return this._queue ??= new QueueWrapper(this); }
+
+    /** Manages DHCP Leases, Static IP assignments, and Layer 2 ARP bindings. */
+    public get ip(): IpWrapper { return this._ip ??= new IpWrapper(this); }
+
+    /** Manages Address Lists, NAT rules (Port Forwarding), and Filter rules. */
+    public get firewall(): FirewallWrapper { return this._firewall ??= new FirewallWrapper(this); }
+
+    /** Manages device reboots, backups, and global external IP discovery. */
+    public get system(): SystemWrapper { return this._system ??= new SystemWrapper(this); }
+
+    /** Runs security audits and aggregates system health/resource data. */
+    public get diagnostic(): DiagnosticWrapper { return this._diagnostic ??= new DiagnosticWrapper(this); }
 
     /**
      * File Manager Module.
@@ -190,100 +208,59 @@ export class MikrotikClient extends EventEmitter {
      * 2. **Constructor Options:** Explicit values passed here override defaults but yield to Env Vars if present.
      *
      * @param options Configuration object defining connection, security, and stability parameters.
-     *
-     * @example
-     * // =================================================================
-     * // SCENARIO 1: LOCAL TESTING / DEVELOPMENT (Your Example)
-     * // =================================================================
-     * // Hardcoded credentials are used for quick connectivity testing in the lab.
-     * // We enable 'allowInsecureConfig' to silence the security warning.
-     * const client = new MikrotikClient({
-     * host: '192.168.0.1',       // Local Lab IP
-     * user: 'admin',              // Admin User
-     * password: 'admin',       // Password (exposed in code)
-     * port: 8728,                 // Standard API Port (Non-Encrypted)
-     * useTLS: false,              // Disable SSL for local speed/simplicity
-     * rateLimit: 50,              // Limit concurrency to 50 commands
-     * allowInsecureConfig: true,  // REQUIRED: Suppresses "Hardcoded Password" warning
-     * });
-     *
-     * @example
-     * // =================================================================
-     * // SCENARIO 2: PRODUCTION / DEPLOYMENT (Best Practice)
-     * // =================================================================
-     * // 1. Credentials are removed from code (loaded from .env file or Docker secrets).
-     * // 2. TLS encryption is enabled to protect passwords over the network.
-     * // 3. Circuit Breaker is configured for high availability.
-     * const prodClient = new MikrotikClient({
-     * // Credentials are NOT here. They are read from:
-     * // process.env.MIKROTIK_HOST, process.env.MIKROTIK_USER, etc.
-     *
-     * useTLS: true,               // Force Encryption (Port 8729)
-     * rejectUnauthorized: false,  // Set false if using Self-Signed Certs (Standard in MikroTik)
-     * allowInsecureConfig: false, // Enforce security: Warn if credentials accidentally appear in code
-     *
-     * timeout: 15,                // Wait max 15s for response (vs 10s default)
-     * rateLimit: 100,             // Higher throughput for production
-     * * circuitBreaker: {           // Protect system if router dies
-     * failureThreshold: 5,    // Fail after 5 errors
-     * resetTimeout: 30000     // Retry connection after 30 seconds
-     * }
-     * });
      */
     constructor(options: MikrotikOptions) {
         super();
 
-        // Environment Variable Resolution
-        const envHost = process.env.MIKROTIK_HOST;
-        const envUser = process.env.MIKROTIK_USER;
-        const envPass = process.env.MIKROTIK_PASS;
-        const envPort = process.env.MIKROTIK_PORT;
-        const envProtocol = process.env.MIKROTIK_PROTOCOL;
-        const envSocketPort = process.env.MIKROTIK_PORT_APISSL;
+        const {
+            MIKROTIK_HOST,
+            MIKROTIK_USER,
+            MIKROTIK_PASS,
+            MIKROTIK_PORT,
+            MIKROTIK_PROTOCOL,
+            MIKROTIK_PORT_APISSL
+        } = process.env;
 
-        this.isConfigFromEnv = !!(envHost && envUser && envPass);
+        this.isConfigFromEnv = Boolean(MIKROTIK_HOST && MIKROTIK_USER && MIKROTIK_PASS);
 
-        this.ppp = new PPPWrapper(this);
-        this.queue = new QueueWrapper(this);
-        this.ip = new IpWrapper(this);
-        this.firewall = new FirewallWrapper(this);
-        this.system = new SystemWrapper(this);
-        this.diagnostic = new DiagnosticWrapper(this);
-
-        // Configuration Merging
         this.options = {
-            host: envHost || options.host,
-            user: envUser || options.user,
-            password: envPass || options.password,
-            port: envPort ? Number(envPort) : options.port,
-            protocol: (envProtocol as 'socket' | 'rest') || options.protocol || 'socket',
-            socketPort: envSocketPort ? Number(envSocketPort) : options.socketPort,
+            host: MIKROTIK_HOST ?? options.host,
+            user: MIKROTIK_USER ?? options.user,
+            password: MIKROTIK_PASS ?? options.password,
+            port: MIKROTIK_PORT ? Number(MIKROTIK_PORT) : options.port,
+            protocol: (MIKROTIK_PROTOCOL as 'socket' | 'rest') ?? options.protocol ?? 'socket',
+            socketPort: MIKROTIK_PORT_APISSL ? Number(MIKROTIK_PORT_APISSL) : options.socketPort,
             useTLS: options.useTLS ?? false,
             rejectUnauthorized: options.rejectUnauthorized ?? false,
             allowInsecureConfig: options.allowInsecureConfig ?? false,
-            timeout: options.timeout || 10,
-            rateLimit: options.rateLimit || 50,
+            timeout: options.timeout ?? 10,
+            rateLimit: options.rateLimit ?? 50,
         };
 
         // Initialize Sub-Systems
-        this.rateLimiter = new RateLimiter(this.options.rateLimit || 50);
+        this.rateLimiter = new RateLimiter(this.options.rateLimit as number);
         this.breaker = new CircuitBreaker(options.circuitBreaker);
+        // Note: FileManager handles Streams/Buffers, so eager loading is usually fine here,
+        // but it could also be lazy-loaded if you prefer.
         this.files = new FileManager(this);
 
-        // 4. Security Audit
+        // Security Audit
         if (!this.isConfigFromEnv && this.options.allowInsecureConfig) {
-            this.printSeriousWarning();
+            // Make sure printSeriousWarning exists in your class
+            if (typeof (this as any).printSeriousWarning === 'function') {
+                (this as any).printSeriousWarning();
+            }
         }
 
         if (this.options.protocol === 'rest') {
-            const targetPort = this.options.port === 8728 ? 443 : (this.options.port || 443);
+            const targetPort = this.options.port === 8728 ? 443 : (this.options.port ?? 443);
 
             this.rest = new RestProtocol({
                 host: this.options.host!,
-                user: this.options.user || 'admin',
-                pass: this.options.password || '',
+                user: this.options.user ?? 'admin',
+                pass: this.options.password ?? '',
                 port: targetPort,
-                timeout: (this.options.timeout ?? 10) * 1000,
+                timeout: (this.options.timeout as number) * 1000,
                 insecure: !this.options.rejectUnauthorized
             });
         }
@@ -293,7 +270,7 @@ export class MikrotikClient extends EventEmitter {
 
         if (shouldInitSocket) {
             const socketTargetPort = this.options.protocol === 'socket'
-                ? (this.options.port || 8728)
+                ? (this.options.port ?? 8728)
                 : this.options.socketPort!;
 
             this.socket = new SocketClient({
@@ -307,6 +284,43 @@ export class MikrotikClient extends EventEmitter {
         }
     }
 
+    // ============================================================================
+    // PLUGINS API
+    // ============================================================================
+
+    /**
+     * Injects a RosInterface Plugin into the current client instance.
+     * Supports method chaining for clean initializations.
+     *
+     * @param plugin An instance of a class implementing RosPlugin
+     * @returns The current MikrotikClient instance
+     */
+    public use(plugin: RosPlugin): this {
+        if (this.plugins.has(plugin.name)) {
+            console.warn(`[RosInterface] Plugin '${plugin.name}' is already installed.`);
+            return this;
+        }
+
+        try {
+            plugin.install({
+                client: this,
+                protocol: RosProtocol,
+                toolkit: RosToolkit
+            });
+            this.plugins.set(plugin.name, plugin);
+        } catch (error) {
+            console.error(`[RosInterface] Failed to load plugin '${plugin.name}':`, error);
+        }
+        return this;
+    }
+
+    /**
+     * Retrieves an installed plugin by its name.
+     * Useful for cross-plugin communication.
+     */
+    public getPlugin<T extends RosPlugin>(name: string): T | undefined {
+        return this.plugins.get(name) as T | undefined;
+    }
 
     public get isConnected(): boolean {
         return this._isConnected;

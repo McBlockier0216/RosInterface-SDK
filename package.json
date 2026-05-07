@@ -1,6 +1,6 @@
 {
-  "name": "rosinterface-sdk",
-  "version": "1.0.0",
+  "name": "rosinterface",
+  "version": "2.0.0",
   "description": "Enterprise-grade MikroTik RouterOS SDK. Features a secure hybrid REST/TCP engine, offline queuing, and Swarm Mode for ISP networks.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

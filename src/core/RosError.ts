@@ -2,16 +2,32 @@
  * core/RosError.ts
  *
  * Sophisticated Error wrapper for RouterOS interactions.
+ * Powered by RosInterface SDK.
+ *
  * Features:
  * - Semantic Getters (isNotFound, isAuthError, etc.)
  * - Static Factory for parsing raw Fetch Responses.
- * - JSON serialization support.
+ * - JSON serialization support for external loggers.
  */
 import { RosHttpStatus, RosHttpMessages } from './HttpConstants';
 
+// OPTIMIZATION: Extracting retryable statuses to a constant Set outside the class.
+// A Set provides O(1) lookup time. Moving it here prevents the creation of a new array
+// in memory every time the `isRetryable` getter is called.
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
+// OPTIMIZATION: Pre-compiled Regular Expression for duplicate detection.
+// Avoids creating a new lowercase string copy in memory via `.toLowerCase()`.
+const DUPLICATE_MSG_REGEX = /already (exists|have)/i;
+
 export class RosError extends Error {
+    // RosInterface SDK Watermark
+    public readonly _brand = 'RosInterface';
     public readonly isRosError = true;
-    public readonly timestamp: Date;
+
+    // OPTIMIZATION: Using a numeric timestamp (Date.now()) instead of a `new Date()` object.
+    // Numbers are primitives, saving memory allocation and GC overhead for every error thrown.
+    public readonly timestamp: number;
 
     constructor(
         public readonly status: number,
@@ -20,18 +36,18 @@ export class RosError extends Error {
         public readonly rawResponse?: any // Saves the full JSON body for deep debugging
     ) {
         // Construct a highly readable log message
-        // Format: "RouterOS [404] Not Found (/ip/address/print) -> Item *99 not found"
-        const prefix = RosHttpMessages[status] || 'Unknown Error';
-        super(`RouterOS [${status}] ${prefix} (${command}) -> ${detail}`);
+        const prefix = RosHttpMessages[status] ?? 'Unknown Error';
+        super(`[RosInterface] ${status} ${prefix} (${command}) -> ${detail}`);
 
         this.name = 'RosError';
-        this.timestamp = new Date();
+        this.timestamp = Date.now();
 
-        // Fix for extending built-ins in TypeScript/ES6
+        // Fix for extending built-ins in TypeScript/ES6 environments
         Object.setPrototypeOf(this, RosError.prototype);
     }
 
     // --- 1. Surgical Precision Getters ---
+    // All O(1) primitive comparisons.
 
     /** Resource missing (404) */
     get isNotFound(): boolean {
@@ -48,13 +64,14 @@ export class RosError extends Error {
         return this.status === RosHttpStatus.FORBIDDEN;
     }
 
-    /** * Critical: Detects if the error is due to a duplicate item.
+    /**
+     * Critical: Detects if the error is due to a duplicate item.
      * Useful for Idempotency logic.
      */
     get isDuplicate(): boolean {
         if (this.status !== RosHttpStatus.BAD_REQUEST) return false;
-        const msg = this.detail.toLowerCase();
-        return msg.includes('already exists') || msg.includes('already have');
+        // OPTIMIZATION: Using RegExp test instead of string allocation.
+        return DUPLICATE_MSG_REGEX.test(this.detail);
     }
 
     /** Rate Limiting hit (429) */
@@ -64,15 +81,14 @@ export class RosError extends Error {
 
     /** True if the error is likely temporary (503, 429, etc) */
     get isRetryable(): boolean {
-        // We import the logic from HttpConstants to keep it DRY
-        // (Assuming you exported the helper function, otherwise implement logic here)
-        return [429, 503, 504, 502].includes(this.status);
+        // O(1) memory-safe lookup.
+        return RETRYABLE_STATUSES.has(this.status);
     }
 
     // --- 2. Factory Method (The Logic Cleaner) ---
 
     /**
-     * static factory to parse a Fetch Response and throw/return a typed RosError.
+     * Static factory to parse a Fetch Response and throw/return a typed RosError.
      * Encapsulates all the "dirty" JSON parsing logic from RouterOS.
      */
     public static async fromResponse(response: Response, command: string): Promise<RosError> {
@@ -83,16 +99,19 @@ export class RosError extends Error {
         try {
             const text = await response.text();
 
-            // Try parsing JSON
-            try {
-                rawBody = JSON.parse(text);
-                // RouterOS usually puts the error in 'detail' or 'message'
-                detail = rawBody.detail || rawBody.message || text;
-            } catch {
-                // If not JSON, use the raw text (e.g. HTML from a proxy)
+            // OPTIMIZATION: Quick check before attempting JSON parse to avoid
+            // the heavy try/catch block if the response is obviously not JSON (e.g. HTML proxy error).
+            if (text && text.startsWith('{')) {
+                try {
+                    rawBody = JSON.parse(text);
+                    detail = rawBody.detail ?? rawBody.message ?? text;
+                } catch {
+                    detail = text;
+                }
+            } else {
                 detail = text || detail;
             }
-        } catch (e) {
+        } catch {
             detail = "Could not read response body";
         }
 
@@ -104,13 +123,15 @@ export class RosError extends Error {
      */
     public toJSON() {
         return {
-            errorType: 'RosError',
+            sdk: this._brand,
+            errorType: this.name,
             status: this.status,
             message: this.message,
             detail: this.detail,
             command: this.command,
             isRetryable: this.isRetryable,
-            timestamp: this.timestamp
+            // Convert back to ISO string for standard log ingestion
+            timestamp: new Date(this.timestamp).toISOString()
         };
     }
 }
