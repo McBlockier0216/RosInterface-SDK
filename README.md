@@ -17,7 +17,7 @@
 >
 > Construye aplicaciones de red tolerantes a fallos, offline-first y con cero saturación de CPU.
 
-[![npm version](https://img.shields.io/npm/v/rosinterface-sdk.svg?style=flat-square&color=007acc)](https://www.npmjs.com/package/rosinterface)
+[![npm version](https://img.shields.io/npm/v/rosinterface.svg?style=flat-square&color=007acc)](https://www.npmjs.com/package/rosinterface)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 
 ---
