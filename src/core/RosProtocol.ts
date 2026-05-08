@@ -28,10 +28,6 @@ export class RosProtocol {
         else if (len < 0x10000000) headerLen = 4;
         else headerLen = 5;
 
-        // OPTIMIZATION: Use `Buffer.allocUnsafe` instead of `alloc` + `concat`.
-        // `allocUnsafe` skips the zero-filling phase (much faster CPU execution).
-        // Since we immediately overwrite every single byte in this buffer, it is perfectly safe.
-        // This reduces 3 buffer allocations down to EXACTLY 1.
         const result = Buffer.allocUnsafe(headerLen + len);
         let offset = 0;
 

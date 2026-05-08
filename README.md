@@ -17,7 +17,7 @@
 >
 > Construye aplicaciones de red tolerantes a fallos, offline-first y con cero saturación de CPU.
 
-[![npm version](https://img.shields.io/npm/v/rosinterface-sdk.svg?style=flat-square&color=007acc)](https://www.npmjs.com/package/rosinterface-sdk)
+[![npm version](https://img.shields.io/npm/v/rosinterface-sdk.svg?style=flat-square&color=007acc)](https://www.npmjs.com/package/rosinterface)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 
 ---
@@ -148,7 +148,7 @@ MIKROTIK_HOST: Your router's IP address (e.g., 192.168.1.1).
 
 MIKROTIK_USER: Username with write permissions (e.g., admin).
 
-MIKROTIK_PASSWORD: User password.
+MIKROTIK_PASS: User password.
 
 The Brain (Main Protocol)
 Here you decide how commands (Create, Edit, Delete) will be sent.
@@ -238,30 +238,26 @@ const client = new MikrotikClient({
 
 await client.connect();
 ```
+
+>>Use this form of connection, solely and exclusively for local tests or controlled environments, never use it when uploading the project, or you will expose sensitive data
 ---
 
 
 #### 2. Recommended connection (Production/Release)
 
 ```ts
-import { MikrotikClient } from 'rosinterface';
 import 'dotenv/config';
+import { MikrotikClient } from 'rosinterface';
 
 const client = new MikrotikClient({
-  host: process.env.MIKROTIK_HOST,
-  user: process.env.MIKROTIK_USER,
-  password: process.env.MIKROTIK_PASSWORD,
-  protocol: process.env.MIKROTIK_PROTOCOL, 
-  port: 443,
-  socketPort: 8729,
   useTLS: true, // Always use TLS between TLS v1.2 or TLS v1.3 deppend that your devices
-  allowInsecureConfig: true, // Only if you do not have a trusted certificate
   rejectUnauthorized: false, // We allow self-signed certificates
   timeout: 10 // Adjust the time tolerance, so that the library throws an error (10s)  
 });
 
 await client.connect();
 ```
+>>All credentials are loaded automatically, cleanly and neatly from your environment variables, you do not need to expose the credentials to your repository or project compartment
 
 ---
 
@@ -805,6 +801,8 @@ const client = new MikrotikClient({
 await client.connect();
 ```
 
+>>Este tipo de conexión, se recomienda usarla única y exclusivamente en entorno locales o controlados, ya que expone directamente lase credenciales sensibles del router
+
 ---
 
 #### 2. Conexión Recomendada (Producción)
@@ -814,20 +812,15 @@ import { MikrotikClient } from 'rosinterface';
 import 'dotenv/config';
 
 const client = new MikrotikClient({
-    host: process.env.MIKROTIK_HOST,
-    user: process.env.MIKROTIK_USER,
-    password: process.env.MIKROTIK_PASSWORD,
-    protocol: process.env.MIKROTIK_PROTOCOL,
-    port: 443,
-    socketPort: 8729, // Recuerda cambiar el puerto por defecto
     useTLS: true, // Siempre usa TLS v1.2 o TLS v1.3, depende de tus dispocitivos
-    allowInsecureConfig: true, // Solo si no se cuenta con certificados confiables
     rejectUnauthorized: false, // Permite los certificados auto firmados
     timeout: 10 // Ajusta la tolerancia de tiempo, para que la libreria arroje un error (10s)
 });
 
 await client.connect();
 ```
+
+>>Es la opción más recomendada, ya que las credenciales se tomaran de forma automática, limpia y ordenadamente desde tus variables de entorno que previamente fueron creadas, siendo la forma mas segura sin exponer las credenciales sensibles.
 
 ---
 
@@ -1653,7 +1646,7 @@ Esto significa que su envoltorio se beneficia de la arquitectura de confiabilida
 <summary><b>English</b></summary>
 <br>
 
-> **RosInterface SDK** was born from the necessity to solve real-world challenges in managing MikroTik networks at scale. My goal is to provide developers and ISPs with the most resilient, high-performance, and secure tool possible.
+> **RosInterface** was born from the necessity to solve real-world challenges in managing MikroTik networks at scale. My goal is to provide developers and ISPs with the most resilient, high-performance, and secure tool possible.
 >
 > **Join the Mission:** This project is open for everyone. If you want to contribute—whether by optimizing performance, fixing bugs, or proposing new enterprise features—your pull requests are more than welcome. Let's build the industry standard together for the benefit of the entire networking community.
 >
@@ -1665,7 +1658,7 @@ Esto significa que su envoltorio se beneficia de la arquitectura de confiabilida
 <summary><b>Español</b></summary>
 <br>
 
-> **RosInterface SDK** nació de la necesidad de resolver desafíos reales en la gestión de redes MikroTik a gran escala. Mi objetivo es proporcionar a los desarrolladores e ISPs la herramienta más resiliente, de alto rendimiento y segura posible.
+> **RosInterface** nació de la necesidad de resolver desafíos reales en la gestión de redes MikroTik a gran escala. Mi objetivo es proporcionar a los desarrolladores e ISPs la herramienta más resiliente, de alto rendimiento y segura posible.
 >
 > **Únete a la Misión:** Este proyecto es de código abierto y para todos. Si deseas contribuir—ya sea optimizando el rendimiento, corrigiendo errores o proponiendo nuevas funciones empresariales—tus *pull requests* son más que bienvenidos. Construyamos juntos el estándar de la industria para el beneficio de toda la comunidad de redes.
 >

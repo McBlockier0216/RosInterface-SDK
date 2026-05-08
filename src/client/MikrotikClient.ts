@@ -26,7 +26,20 @@ import {RosToolkit} from "../core/RosToolkit";
 // Load environment variables immediately
 dotenv.config();
 
-export interface MikrotikOptions extends SocketClientOptions {
+export interface MikrotikOptions extends Omit<SocketClientOptions, 'host' | 'port'> {
+
+    /**
+     * RouterOS IP or Hostname.
+     * Optional here because it can be loaded from .env (MIKROTIK_HOST)
+     */
+    host?: string;
+
+    /**
+     * RouterOS port.
+     * Optional here because it can be loaded from .env (MIKROTIK_PORT)
+     */
+    port?: number;
+
     /**
      * RouterOS username (default: 'admin')
      */
