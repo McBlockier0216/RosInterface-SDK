@@ -23,6 +23,37 @@
 ---
 
 
+
+<details>
+<summary><b>Architecture Overview</b></summary>
+
+<br>
+
+<p align="center">
+  <img 
+    src="./docs/architecture_en.png" 
+    alt="RosInterface Architecture" 
+    width="1000"
+  />
+</p>
+
+</details>
+
+<details>
+<summary><b>Arquitectura del Sistema</b></summary>
+
+<br>
+
+<p align="center">
+  <img 
+    src="./docs/architecture_es.png" 
+    alt="Arquitectura de RosInterface" 
+    width="1000"
+  />
+</p>
+
+</details>
+
 <details>
 <summary><b>Installation & Quick Start</b></summary>
 
