@@ -2,7 +2,7 @@ import * as net from 'net';
 import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import { Buffer } from 'buffer';
-import { RosProtocol } from './RosProtocol'; // Asegúrate de tener este archivo
+import { RosProtocol } from './RosProtocol';
 
 /**
  * Configuration options for the Socket Client.

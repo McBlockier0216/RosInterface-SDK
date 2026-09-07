@@ -1,26 +1,13 @@
 /**
  * CircuitBreakerState Enum
  * Defines the possible states of the protection mechanism.
- *
- * OPTIMIZATION: Using `const enum` instead of `enum`.
- * TypeScript will inline these values (0, 1, 2) at compile time instead of
- * creating a reverse-mapping object at runtime. This saves memory and
- * avoids object lookups.
  */
 export const enum CircuitBreakerState {
-    /** Normal operation. Requests pass through. */
     CLOSED = 0,
-    /** Failure threshold reached. Requests are blocked immediately. */
     OPEN = 1,
-    /** Cool-down period over. A test request is allowed to check health. */
     HALF_OPEN = 2
 }
 
-/**
- * OPTIMIZATION: Pre-allocated array for O(1) state name resolution.
- * Since we used `const enum`, we lose TypeScript's reverse mapping.
- * An array index lookup is significantly faster than an object property lookup.
- */
 const STATE_NAMES = ['CLOSED', 'OPEN', 'HALF_OPEN'];
 
 export interface CircuitBreakerOptions {
@@ -32,15 +19,15 @@ export interface CircuitBreakerOptions {
 
 /**
  * CircuitBreaker
- * * Implements the classic stability pattern.
- * * Wraps potentially dangerous network calls.
- * * If the router fails repeatedly, the breaker "trips" and prevents further load
- * until the system recovers.
+ * Implements the classic stability pattern with Concurrency Locks.
  */
 export class CircuitBreaker {
     private state: CircuitBreakerState = CircuitBreakerState.CLOSED;
     private failureCount: number = 0;
     private lastFailureTime: number = 0;
+
+    // NEW: Concurrency lock for the HALF_OPEN state
+    private isTesting: boolean = false;
 
     private readonly failureThreshold: number;
     private readonly resetTimeout: number;
@@ -51,25 +38,32 @@ export class CircuitBreaker {
     }
 
     /**
-     * Executes an async action (like client.connect() or client.write())
-     * through the safety mechanism of the breaker.
+     * Executes an async action through the safety mechanism of the breaker.
      */
     public async execute<T>(action: () => Promise<T>): Promise<T> {
-        // 1. Check State
+        // 1. Check State and Concurrency Locks
         if (this.state === CircuitBreakerState.OPEN) {
-            // OPTIMIZATION: Call Date.now() only once and store it in a constant.
-            // System clock calls are slightly expensive, doing it once saves CPU cycles.
             const now = Date.now();
             const timeSinceLastFailure = now - this.lastFailureTime;
 
             if (timeSinceLastFailure > this.resetTimeout) {
+                // Time is up. We transition to HALF_OPEN.
                 this.transitionTo(CircuitBreakerState.HALF_OPEN);
+                // LOCK ACQUIRED: This specific request becomes the "Probe"
+                this.isTesting = true;
             } else {
                 const timeLeft = this.resetTimeout - timeSinceLastFailure;
-                // Note: Throwing creates an Error object (garbage collection overhead),
-                // but this is the failure path, so stability is prioritized over GC here.
                 throw new Error(`CircuitBreaker is OPEN. Fast-failing. Retry in ${timeLeft}ms.`);
             }
+        }
+        else if (this.state === CircuitBreakerState.HALF_OPEN) {
+            // Anti-Thundering-Herd: If another request comes in while the probe
+            // is still executing, reject it immediately to protect the router.
+            if (this.isTesting) {
+                throw new Error('CircuitBreaker is HALF_OPEN. Probe request in progress. Fast-failing.');
+            }
+            // Fallback lock acquisition
+            this.isTesting = true;
         }
 
         // 2. Attempt Execution
@@ -82,11 +76,12 @@ export class CircuitBreaker {
     }
 
     /**
-     * Handles successful execution. Resets failure counts.
+     * Handles successful execution. Resets failure counts and releases locks.
      */
     private onSuccess<T>(result: T): T {
-        // OPTIMIZATION: Strict equality check is faster. Only transition if
-        // we are NOT already CLOSED, avoiding unnecessary function calls.
+        // RELEASE LOCK
+        this.isTesting = false;
+
         if (this.state !== CircuitBreakerState.CLOSED) {
             this.transitionTo(CircuitBreakerState.CLOSED);
         }
@@ -95,12 +90,16 @@ export class CircuitBreaker {
     }
 
     /**
-     * Handles execution failures. Trips the breaker if needed.
+     * Handles execution failures. Trips the breaker if needed and releases locks.
      */
     private onFailure(error: Error): never {
+        // RELEASE LOCK
+        this.isTesting = false;
+
         this.failureCount++;
         this.lastFailureTime = Date.now();
 
+        // If the probe failed, OR we reached the limit during normal operations, trip it.
         if (this.state === CircuitBreakerState.HALF_OPEN || this.failureCount >= this.failureThreshold) {
             this.transitionTo(CircuitBreakerState.OPEN);
         }
@@ -110,6 +109,8 @@ export class CircuitBreaker {
 
     private transitionTo(newState: CircuitBreakerState): void {
         this.state = newState;
+        // OPTIONAL: In production, consider changing console.warn to a custom
+        // Event Emitter or logging interface, as console logs are synchronous and block the thread slightly.
         console.warn(`[CircuitBreaker] State changed to: ${STATE_NAMES[newState]}`);
     }
 

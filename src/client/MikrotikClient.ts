@@ -204,6 +204,8 @@ export class MikrotikClient extends EventEmitter {
      */
     private pendingCommands = new Map<string, PendingCommand>();
 
+    private connectionPromise: Promise<void> | null = null;
+
     /**
      * Temporary storage for the current sentence being built word-by-word.
      */
@@ -355,6 +357,17 @@ export class MikrotikClient extends EventEmitter {
      * and then loads the schema.
      */
     public async connect(): Promise<void> {
+        // IDEMPOTENCY CHECK: If already connected, do nothing and return immediately.
+        if (this._isConnected) {
+            return Promise.resolve();
+        }
+
+        // CONCURRENCY LOCK (Anti-Storm): If a connection is currently in progress,
+        // wait for it to finish instead of triggering a new HTTP/TCP handshake.
+        if (this.connectionPromise) {
+            return this.connectionPromise;
+        }
+
         this.isManuallyClosing = false;
 
         // Security Check
@@ -362,29 +375,48 @@ export class MikrotikClient extends EventEmitter {
             throw new Error('FATAL: Insecure Configuration. Use .env or allowInsecureConfig: true');
         }
 
-        // Execution (Protected by Circuit Breaker)
-        await this.breaker.execute(async () => {
+        // ASSIGN PROMISE LOCK: Store the execution promise so other calls can await it
+        this.connectionPromise = this.breaker.execute(async () => {
+            try {
+                // --- STRATEGY A: REST API (Modern / Hybrid) ---
+                if (this.rest && this.options.protocol === 'rest') {
+                    await this.rest.connect();
 
-            // --- STRATEGY A: REST API (Modern / Hybrid) ---
-            if (this.rest && this.options.protocol === 'rest') {
-                // Step A1: Establish Main Control Channel (HTTPS)
-                await this.rest.connect();
+                    if (this.socket) {
+                        await this.socket.connect();
+                        this.socket.on('data', (word: string) => this.processIncomingWord(word));
 
-                // Step A2: Initialize Background Stream Channel (Hybrid Mode)
-                if (this.socket) {
+                        this.socket.on('close', () => {
+                            this._isConnected = false;
+                            this.emit('close');
+                            if (this.isManuallyClosing) {
+                                this.pendingCommands.clear();
+                            } else {
+                                this.rejectAllCommands(new Error('Stream Connection closed unexpectedly'));
+                            }
+                        });
+
+                        this.socket.on('error', (err: Error) => {
+                            this._isConnected = false;
+                            this.emit('error', err);
+                            this.rejectAllCommands(err);
+                        });
+
+                        await this.login();
+                    }
+                }
+                // --- STRATEGY B: SOCKET API (Legacy / Standard) ---
+                else if (this.socket) {
                     await this.socket.connect();
-
                     this.socket.on('data', (word: string) => this.processIncomingWord(word));
 
-                    // --- SOCKET EVENTS BRIDGING (REST MODE) ---
                     this.socket.on('close', () => {
                         this._isConnected = false;
                         this.emit('close');
-
                         if (this.isManuallyClosing) {
                             this.pendingCommands.clear();
                         } else {
-                            this.rejectAllCommands(new Error('Stream Connection closed unexpectedly'));
+                            this.rejectAllCommands(new Error('Connection closed unexpectedly'));
                         }
                     });
 
@@ -394,51 +426,30 @@ export class MikrotikClient extends EventEmitter {
                         this.rejectAllCommands(err);
                     });
 
-                    // Authenticate background channel
                     await this.login();
                 }
+                else {
+                    throw new Error("MikrotikClient: No driver initialized. Check configuration.");
+                }
+
+                // POST-CONNECTION SETUP
+                await this.schema.load(this);
+
+                // --- FINAL SUCCESS STATE ---
+                this._isConnected = true;
+                this.emit('ready');
+
+            } catch (error) {
+                // If connection fails, bubble up the error
+                throw error;
+            } finally {
+                // 4. RELEASE LOCK: Always release the lock when done, whether success or fail.
+                this.connectionPromise = null;
             }
-
-            // --- STRATEGY B: SOCKET API (Legacy / Standard) ---
-            else if (this.socket) {
-                // Step B1: Establish TCP/TLS Connection
-                await this.socket.connect();
-
-                // Step B2: Graceful Listener Binding
-                this.socket.on('data', (word: string) => this.processIncomingWord(word));
-
-                // --- SOCKET EVENTS BRIDGING (SOCKET MODE) ---
-                this.socket.on('close', () => {
-                    this._isConnected = false;
-                    this.emit('close');
-
-                    if (this.isManuallyClosing) {
-                        this.pendingCommands.clear();
-                    } else {
-                        this.rejectAllCommands(new Error('Connection closed unexpectedly'));
-                    }
-                });
-
-                this.socket.on('error', (err: Error) => {
-                    this._isConnected = false;
-                    this.emit('error', err);
-                    this.rejectAllCommands(err);
-                });
-
-                // Step B3: Handshake & Auth
-                await this.login();
-            }
-            else {
-                throw new Error("MikrotikClient: No driver initialized. Check configuration.");
-            }
-
-            // POST-CONNECTION SETUP
-            await this.schema.load(this);
-
-            // --- FINAL SUCCESS STATE ---
-            this._isConnected = true;
-            this.emit('ready');
         });
+
+        // Return the execution promise
+        return this.connectionPromise;
     }
 
 
@@ -448,8 +459,9 @@ export class MikrotikClient extends EventEmitter {
      */
     public close(): void {
         this.isManuallyClosing = true;
-
         this._isConnected = false;
+        this.connectionPromise = null; // Reset the connection lock
+
         this.emit('close');
 
         if (this.socket) {
